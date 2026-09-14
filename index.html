@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>地址标点连线工具</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f6f8; color: #222; min-height: 100vh; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 24px 16px 60px; }
+  header { text-align: center; padding: 28px 0 6px; }
+  header h1 { font-size: 26px; letter-spacing: 1px; }
+  .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.06); padding: 20px; margin-top: 20px; }
+  .card h2 { font-size: 16px; margin-bottom: 12px; }
+
+  .addr-list { margin-top: 14px; }
+  .addr-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .addr-row .order { width: 26px; height: 26px; flex: 0 0 26px; border-radius: 50%; background: #2f6fed; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: bold; }
+  .addr-row input { flex: 1; border: 1px solid #d9dce1; border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit; }
+  .addr-row input:focus { outline: none; border-color: #4a90d9; }
+  .arrow { text-align: center; color: #2f6fed; font-size: 16px; font-weight: bold; margin: 2px 0; line-height: 1; }
+  .addr-tools { display: flex; gap: 10px; margin-top: 12px; }
+
+  button { border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
+  .btn-primary { background: #2f6fed; color: #fff; }
+  .btn-primary:hover { background: #265ec9; }
+  .btn-secondary { background: #eef1f5; color: #333; }
+  .btn-secondary:hover { background: #e2e6ec; }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+  .key-box { display: flex; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+  .key-box input { flex: 1; min-width: 220px; border: 1px solid #d9dce1; border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+  .key-tip { font-size: 12px; color: #999; margin-top: 6px; line-height: 1.7; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+
+  .status { display: none; margin-top: 12px; font-size: 13px; border-radius: 8px; padding: 10px 12px; line-height: 1.6; }
+  #mapCard { display: none; }
+  #mapWrap { position: relative; margin-top: 14px; border-radius: 10px; overflow: hidden; border: 1px solid #e3e6eb; background: #eef1f4; }
+  #map { width: 100%; height: 440px; }
+  .actions { margin-top: 12px; display: none; gap: 10px; }
+  .note { background: #f0f7ff; border-left: 3px solid #2f6fed; border-radius: 0 8px 8px 0; padding: 10px 12px; margin-top: 24px; font-size: 13px; color: #444; line-height: 1.7; }
+  .note b { color: #1f4e9c; }
+  footer { text-align: center; color: #bbb; font-size: 12px; margin-top: 40px; }
+  .leaflet-tooltip.route-label { background: #fff; border: 1px solid #2f6fed; border-radius: 4px; padding: 2px 6px; font-size: 12px; color: #1f4e9c; font-weight: 600; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.2); }
+  .leaflet-tooltip.route-label:before { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header></header>
+
+  <div class="card">
+    <h2>1. 输入地址（从下到上）</h2>
+    <div class="addr-list" id="addrList"></div>
+    <div class="addr-tools">
+      <button class="btn-secondary" onclick="window.addAddrRow()">＋ 添加地址</button>
+      <button class="btn-secondary" onclick="window.removeLastAddrRow()">－ 删除最后一个</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. 地图服务设置（高德 Key）</h2>
+    <div class="key-box">
+      <input type="text" id="amapKey" placeholder="粘贴高德 Web 服务 Key（没有可留空，仅无法定位到地图）">
+      <button class="btn-secondary" onclick="window.saveKey()">保存</button>
+    </div>
+    <div class="key-tip">免费申请：高德开放平台 → 控制台 → 应用管理 → 创建应用 → 添加 Key（Web服务）。保存后存在本机浏览器，不会上传。</div>
+    <div class="status" id="statusBox"></div>
+    <div class="row">
+      <button class="btn-primary" id="genBtn" onclick="window.generate()">生成地图</button>
+    </div>
+  </div>
+
+  <div class="card" id="mapCard">
+    <h2>3. 地图预览</h2>
+    <div id="mapWrap"><div id="map"></div></div>
+  </div>
+
+  <div class="note">
+    <b>说明：</b>底图使用高德地图公开瓦片（免 key）；地址→坐标定位需要高德 Web 服务 Key（免费申请）。未填 Key 时地图仅显示底图。
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  var addrList = document.getElementById('addrList');
+  var amapKeyInput = document.getElementById('amapKey');
+  var statusBox = document.getElementById('statusBox');
+  var mapCard = document.getElementById('mapCard');
+  var genBtn = document.getElementById('genBtn');
+
+  var map = null;
+  var markers = [];
+  var line = null;
+
+  // ---------- 地址行管理 ----------
+  function addrRowHtml(num, val) {
+    return '<div class="addr-row">' +
+      '<div class="order">' + num + '</div>' +
+      '<input type="text" class="addr-input" value="' + (val || '') + '" placeholder="输入地址 ' + num + '">' +
+      '</div>';
+  }
+  function arrowHtml() {
+    return '<div class="arrow">\u2193</div>';
+  }
+  function renderAddrList(vals) {
+    vals = vals || ['', '', ''];
+    var html = '';
+    for (var i = 0; i < vals.length; i++) {
+      html += addrRowHtml(i + 1, vals[i]);
+      if (i < vals.length - 1) html += arrowHtml();
+    }
+    addrList.innerHTML = html;
+  }
+  function getAddrValues() {
+    var inputs = addrList.querySelectorAll('.addr-input');
+    var arr = [];
+    for (var i = 0; i < inputs.length; i++) arr.push(inputs[i].value.trim());
+    return arr;
+  }
+  function addAddrRow() {
+    var vals = getAddrValues();
+    if (vals.length >= 20) return;
+    vals.push('');
+    renderAddrList(vals);
+  }
+  function removeLastAddrRow() {
+    var vals = getAddrValues();
+    if (vals.length <= 1) return;
+    vals.pop();
+    renderAddrList(vals);
+  }
+  function setAddrValues(vals) {
+    if (!vals || !vals.length) return;
+    renderAddrList(vals);
+  }
+
+  renderAddrList(['', '', '']);
+
+  // ---------- Key ----------
+  var savedKey = localStorage.getItem('amap_key') || '';
+  if (savedKey) amapKeyInput.value = savedKey;
+
+  function saveKey() {
+    var k = amapKeyInput.value.trim();
+    if (k) { localStorage.setItem('amap_key', k); setStatus('Key 已保存到本机浏览器。', false); }
+    else { localStorage.removeItem('amap_key'); setStatus('已清除 Key。', false); }
+  }
+
+  function setStatus(msg, isErr) {
+    statusBox.textContent = msg;
+    statusBox.style.display = 'block';
+    statusBox.style.color = isErr ? '#d23' : '#2e7d32';
+    statusBox.style.background = isErr ? '#fdecea' : '#eaf6ee';
+  }
+  function hideStatus() { statusBox.style.display = 'none'; }
+
+  // ---------- 地图 ----------
+  function initMap() {
+    if (map) return;
+    map = L.map('map', { zoomControl: true });
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+      subdomains: ['1', '2', '3', '4'],
+      maxZoom: 18,
+      attribution: '&copy; 高德地图',
+      crossOrigin: true
+    }).addTo(map);
+    map.setView([31.2, 121.5], 10);
+    window._map = map;
+  }
+
+  function clearLayers() {
+    for (var i = 0; i < markers.length; i++) map.removeLayer(markers[i]);
+    markers = [];
+    if (line) { map.removeLayer(line); line = null; }
+  }
+
+  function addMarker(lat, lng, label) {
+    var icon = L.divIcon({
+      className: '',
+      html: '<div style="background:#e03a3a;border:2px solid #fff;border-radius:50%;width:14px;height:14px;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>',
+      iconSize: [14, 14],
+      iconAnchor: [7, 7]
+    });
+    var m = L.marker([lat, lng], { icon: icon });
+    if (label) m.bindTooltip(escapeHtml(label), { permanent: true, direction: 'top', className: 'route-label', offset: [0, -8] });
+    m.addTo(map);
+    markers.push(m);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ---------- 地理编码（高德，限制黄浦区→上海市） ----------
+  function geocodeReq(addr, key, city) {
+    var url = 'https://restapi.amap.com/v3/geocode/geo?address=' + encodeURIComponent(addr) + '&key=' + encodeURIComponent(key);
+    if (city) url += '&city=' + encodeURIComponent(city);
+    return fetch(url).then(function (r) { return r.json(); });
+  }
+
+  // 从高德返回结果中筛选上海市黄浦区的条目
+  function pickShanghai(results) {
+    if (!results || !results.length) return null;
+    for (var i = 0; i < results.length; i++) {
+      var g = results[i];
+      if (g.district === '黄浦区' && g.city === '上海市') return g;
+    }
+    for (var i = 0; i < results.length; i++) {
+      var g = results[i];
+      if (g.city === '上海市') return g;
+    }
+    return null;
+  }
+
+  function geocodeAddr(addr, key) {
+    return new Promise(function (resolve, reject) {
+      // 1) 先限黄浦区
+      geocodeReq(addr, key, '黄浦区').then(function (data) {
+        var hit = (data && data.status === '1') ? pickShanghai(data.geocodes) : null;
+        if (hit) return hit;
+        // 2) 再退一步搜全上海市
+        return geocodeReq(addr, key, '上海').then(function (data2) {
+          return (data2 && data2.status === '1') ? pickShanghai(data2.geocodes) : null;
+        });
+      }).then(function (hit) {
+        if (hit) {
+          var loc = hit.location.split(',');
+          resolve({ lat: parseFloat(loc[1]), lng: parseFloat(loc[0]), addr: addr });
+        } else {
+          reject(new Error('未找到：' + addr));
+        }
+      }).catch(reject);
+    });
+  }
+
+// ---------- 路径规划（高德驾车，返回沿路折线坐标） ----------
+  // 优先走主干道策略：用 strategy=0（速度优先）可偏向快速路/主干道
+  function planRoute(from, to, key) {
+    var url = 'https://restapi.amap.com/v3/direction/driving?origin=' + from.lng + ',' + from.lat +
+      '&destination=' + to.lng + ',' + to.lat +
+      '&extensions=all&strategy=0&key=' + encodeURIComponent(key);
+    return fetch(url).then(function (r) { return r.json(); }).then(function (data) {
+      if (data && data.status === '1' && data.route && data.route.paths && data.route.paths.length) {
+        var path = data.route.paths[0];
+        // 取所有路段 polyline 拼成完整折线
+        var steps = path.steps || [];
+        var pts = [];
+        for (var i = 0; i < steps.length; i++) {
+          var poly = steps[i].polyline;
+          if (!poly) continue;
+          var segs = poly.split(';');
+          for (var j = 0; j < segs.length; j++) {
+            var c = segs[j].split(',');
+            if (c.length === 2) pts.push([parseFloat(c[1]), parseFloat(c[0])]);
+          }
+        }
+        if (pts.length >= 2) return pts;
+      }
+      return null;
+    });
+  }
+
+  // ---------- 生成 ----------
+  function generate() {
+    if (!map) initMap();
+    clearLayers();
+    hideStatus();
+
+    var vals = getAddrValues().filter(Boolean);
+    if (!vals.length) { setStatus('请先输入地址。', true); return; }
+    var key = (amapKeyInput.value || savedKey || '').trim();
+    if (!key) { setStatus('未配置高德 Key，地图无法定位。请在上方填入 Key 后重试。', true); return; }
+
+    genBtn.disabled = true;
+    setStatus('正在定位 ' + vals.length + ' 个地址…', false);
+
+    var tasks = vals.map(function (v) {
+      return geocodeAddr(v, key).catch(function () { return null; });
+    });
+
+    Promise.all(tasks).then(function (results) {
+      var ok = [];
+      for (var i = 0; i < results.length; i++) if (results[i]) ok.push(results[i]);
+      if (!ok.length) { genBtn.disabled = false; setStatus('所有地址都未能定位，请检查 Key 或地址。', true); return; }
+
+      for (var j = 0; j < ok.length; j++) addMarker(ok[j].lat, ok[j].lng, ok[j].addr);
+
+      var drawRoute = function () {
+        // 相邻点之间按顺序请求路径规划
+        var segs = [];
+        for (var k = 0; k < ok.length - 1; k++) {
+          segs.push(planRoute(ok[k], ok[k + 1], key));
+        }
+        return Promise.all(segs);
+      };
+
+      drawRoute().then(function (segResults) {
+        genBtn.disabled = false;
+        var allPts = [];
+        var usedRoute = false;
+        for (var s = 0; s < segResults.length; s++) {
+          var pts = segResults[s];
+          if (pts && pts.length >= 2) {
+            // 合并折线：去掉上一点的重复
+            if (allPts.length) pts = pts.slice(1);
+            allPts = allPts.concat(pts);
+            usedRoute = true;
+          } else {
+            // 规划失败降级为直线
+            var a = ok[s], b = ok[s + 1];
+            var straight = [[a.lat, a.lng], [b.lat, b.lng]];
+            if (allPts.length) straight = straight.slice(1);
+            allPts = allPts.concat(straight);
+          }
+        }
+        if (allPts.length > 1) {
+          line = L.polyline(allPts, { color: '#2e9e44', weight: 5, opacity: .9 });
+          line.addTo(map);
+        }
+
+        mapCard.style.display = 'block';
+
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            map.invalidateSize();
+            var group = L.featureGroup(ok.map(function (r) { return L.marker([r.lat, r.lng]); }));
+            map.fitBounds(group.getBounds(), { padding: [40, 40] });
+            setTimeout(function () { map.invalidateSize(); }, 200);
+          });
+        });
+
+        var failed = vals.length - ok.length;
+        setStatus('成功定位 ' + ok.length + ' / ' + vals.length + ' 个地址。' + (failed ? ' ' + failed + ' 个未找到。' : '') +
+          (usedRoute ? ' 连线已按道路规划（优先主干道）。' : ' 路径规划不可用，已用直线连接。'), false);
+      });
+    });
+  }
+
+  window.addAddrRow = addAddrRow;
+  window.removeLastAddrRow = removeLastAddrRow;
+  window.saveKey = saveKey;
+  window.generate = generate;
+})();
+</script>
+</body>
+</html>
